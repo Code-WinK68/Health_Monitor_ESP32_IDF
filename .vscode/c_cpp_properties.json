@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "D:/ESP32_IDF/Environment/Espressif/frameworks/esp-idf-v5.4.4/components/**",
+                "D:/ESP32_IDF/Environment/Espressif/frameworks/esp-idf-v5.4.4/components/freertos/FreeRTOS-Kernel/include/freertos"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "compilerPath": "C:\\mingw64\\bin\\gcc.exe",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "windows-gcc-x64"
+        }
+    ],
+    "version": 4
+}

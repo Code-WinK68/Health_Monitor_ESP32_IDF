@@ -1,0 +1,15 @@
+Các câu lệnh
+
+idf.py build : chạy chương trình, và quyét các lỗi
+
+idf.py menuconfig : 
+
+idf.py flash : 
+
+idf.py clean : xóa phần đã build
+
+idf.py create-project "Name_project" : tạo project
+
+idf.py set-target esp32s3 : thiet lap chay tren board esp32s3
+
+==> Lỗi không link thư viện 
