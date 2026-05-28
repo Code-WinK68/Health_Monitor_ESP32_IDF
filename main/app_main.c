@@ -1,30 +1,112 @@
+
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
-#include <portmacro.h>
+#include "esp_adc/adc_oneshot.h"
+#include "esp_timer.h"
+#include "esp_log.h"
 
+#define LO_PLUS_PIN     GPIO_NUM_3   
+#define LO_MINUS_PIN    GPIO_NUM_2   
+#define ECG_ADC_CH      ADC_CHANNEL_0 
 
-//#define LED_PIN GPIO_NUM_48
+// Tần số 400Hz -> Chu kỳ lấy mẫu = 1000000 µs / 400 = 2500 µs
+#define SAMPLE_PERIOD_US 2500 
 
+static adc_oneshot_unit_handle_t adc_handle;
 
+// Biến lưu trạng thái bộ lọc DSP (toàn cục hoặc static)
+static float baseline = 0.0f;
+static float smooth_val = 0.0f;
+
+// =====================================================
+// HÀM NGẮT TIMER (CHẠY ĐÚNG MỖI 2500 µs - 400Hz)
+// =====================================================
+static void timer_callback(void *arg)
+{
+    int raw_ecg = 0;
+    int lo_plus = gpio_get_level(LO_PLUS_PIN);
+    int lo_minus = gpio_get_level(LO_MINUS_PIN);
+
+    adc_oneshot_read(adc_handle, ECG_ADC_CH, &raw_ecg);
+
+    if (lo_plus == 1 || lo_minus == 1) {
+        printf("2048\n");
+    } else {
+        // 1. Lọc thông cao bậc 1 (Khử trôi đường nền)
+        baseline = 0.995f * baseline + 0.005f * (float)raw_ecg;
+        float high_pass = (float)raw_ecg - baseline;
+
+        // 2. Bộ lọc Trung bình trượt 8 mẫu để DIỆT SẠCH nhiễu 50Hz tại 400Hz Sampling
+        static float filter_buf[8] = {0};
+        static int buf_idx = 0;
+        
+        // Lưu mẫu mới vào mảng vòng
+        filter_buf[buf_idx] = high_pass;
+        buf_idx = (buf_idx + 1) % 8;
+        
+        // Tính tổng 8 mẫu gần nhất
+        float sum = 0;
+        for(int i = 0; i < 8; i++) {
+            sum += filter_buf[i];
+        }
+        float moving_average = sum / 8.0f;
+
+        // 3. Khôi phục offset đưa về giữa màn hình CoolTerm
+        int filtered_ecg = (int)moving_average + 2048;
+
+        printf("%d\n", filtered_ecg);
+    }
+    fflush(stdout);
+}
+
+// =====================================================
+// KHỞI TẠO PHẦN CỨNG
+// =====================================================
+static void init_hardware(void)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << LO_PLUS_PIN) | (1ULL << LO_MINUS_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    adc_oneshot_unit_init_cfg_t unit_cfg = { .unit_id = ADC_UNIT_1 };
+    adc_oneshot_new_unit(&unit_cfg, &adc_handle);
+
+    adc_oneshot_chan_cfg_t chan_cfg = {
+        .bitwidth = ADC_BITWIDTH_12,
+        .atten    = ADC_ATTEN_DB_12,
+    };
+    adc_oneshot_config_channel(adc_handle, ECG_ADC_CH, &chan_cfg);
+}
+
+// =====================================================
+// HÀM CHÍNH
+// =====================================================
 void app_main(void)
 {
-    // Thiết lập thông số
-    gpio_config_t Gpio_config= {};
-        Gpio_config.pin_bit_mask = (1ULL << 48);          
-        Gpio_config.mode         = GPIO_MODE_OUTPUT;                 
-        Gpio_config.pull_up_en   = GPIO_PULLDOWN_DISABLE;           
-        Gpio_config.pull_down_en = GPIO_PULLDOWN_DISABLE;         
-        Gpio_config.intr_type    = GPIO_INTR_DISABLE;             
+    init_hardware();
 
-    gpio_config(&Gpio_config);
+    // Cấu hình Hardware Timer chạy định kỳ
+    const esp_timer_create_args_t timer_args = {
+        .callback = &timer_callback,
+        .name = "ecg_400hz_timer"
+    };
+    esp_timer_handle_t ecg_timer;
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &ecg_timer));
+    
+    // Kích hoạt timer chạy lặp lại mỗi 2500 µs (400Hz)
+    ESP_ERROR_CHECK(esp_timer_start_periodic(ecg_timer, SAMPLE_PERIOD_US));
 
-    while(1){
-        gpio_set_level(48, 0);   // LED sang
-        vTaskDelay(2000/ portTICK_PERIOD_MS);
+    printf("--- Dang lay mau ECG o tan so 400Hz ---\n");
 
-        gpio_set_level(48, 1);   // LED tat
-        vTaskDelay(2000/ portTICK_PERIOD_MS);
+    // Vòng lặp chính trống rỗng, ép ngủ hoàn toàn để các luồng khác chạy, không lo lỗi Watchdog
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
