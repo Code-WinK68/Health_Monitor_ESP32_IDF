@@ -12,4 +12,10 @@ idf.py create-project "Name_project" : tạo project
 
 idf.py set-target esp32s3 : thiet lap chay tren board esp32s3
 
-==> Lỗi không link thư viện 
+==> Lỗi không link thư viện add thêm path vào Setting json user
+
+
+idf.py -p "gate" flash
+
+idf.py monitor -p "gate" : serial monitor
+
